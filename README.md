@@ -248,7 +248,7 @@ import os
 
 class QuicklzRecipe(CythonRecipe):
     version='1.0' # QuickLZ 版本号
-    url = "https://github.com/jimlearning/pyquicklz/archive/refs/tags/1.0.zip" # 源代码压缩包路径
+    url = "https://github.com/jimlearning/pyquicklz/archive/refs/tags/1.0.zip" # 源代码压缩包路径（可以是远程 URL https://，也可以是本地 URL file:///）
     library = "libquicklz.a" # 输出的静态库名称
     sources = [] # 空列表，因为我们手动处理编译
     include_dir = "quicklz.h" # 需要安装的头文件
@@ -312,8 +312,56 @@ HEADER_SEARCH_PATHS = /Users/jim/Projects/kivy-build-output/dist/root/python3/in
 LIBRARY_SEARCH_PATHS = $(inherited) /Users/jim/Projects/kivy-build-output/dist/lib
 ```
 
-## 总结
+## FAQ
 
-整个尝试过程中，大部分时间都在 kivy 给定的语境下打转，后来发现 Python 脚本只能使用动态库，把问题解耦为 kivy 支持 iOS 下调用 Python，Python 通过动态库调用第三方库，彻底摆脱了 kivy 的干扰，问题才得以顺利解决。
+整个编译过程中出现了各种各样的问题，难以尽述，择要记录一下。
 
-但 kivy 是如何基于静态库完成框架搭建，以及库之间的相互调用，还没看明白，有机会再继续研究。
+1. 记得一定要在 Python 的虚拟环境下编译，可以使用 divy 官方示例的 venv 来创建和管理虚拟环境，当然 conda 也可以。
+
+2. 如果当前 Mac 是 M 系列芯片，但编译过程中却都指向了 X86_64，可能是因为使用了 Rosetta，首先找到应用程序 -> 实用工具 -> 终端（Terminal），右键显示简介，有一个选项 “使用 Rosetta 打开”，将其关闭，arch 参数即会指向 Arm64。
+
+3. 在编译到 libffi 库的时候 armv7 版本却始终通不过，想要关闭又无法关闭。各种试错之后，决定把 Xcode 版本降级试试。因为 Xcode 当前版本是 16.2，可能 divy-ios 的支持还不足，降到 15.4 版本，问题解决。
+
+4. 现在编译各种 divy-ios 内置的库一切正常，但却报错 pip3 无此命令，这也是编译过程中需要用到的，无法改为手动调用。发现 `dist/hostpython3/bin` 目录下确实缺少 pip3，无奈只能手动安装。安装成功之后，整个编译过程顺利完成。
+
+可能原因是 divy-ios 安装 pip3 时没有使用当前虚拟环境下的 Python，而是全局环境下的 Python，所以 pip3 安装错了地方。这时需要查看一下 `~/.zshrc` 或者 `~/.bashrc` 或 `~/.zprofile` 中的 Python 指定配置，比如 `export PATH="/Library/Frameworks/Python.framework/Versions/3.x/bin:${PATH}"`，可以先把配置关掉，等编译通过之后再恢复。
+
+手动安装 pip3 参考命令：
+
+```shell
+# Method 1
+/ios/dist/hostpython3/bin/python3 -m ensurepip
+
+# Method 2
+curl -o get-pip.py https://bootstrap.pypa.io/get-pip.py
+~/Desktop/ios/dist/hostpython3/bin/python3 ~/Downloads/get-pip.py --prefix=~/Desktop/ios/dist/hostpython3
+
+# Method 3
+curl -o get-pip.py https://bootstrap.pypa.io/get-pip.py
+cd ~/Downloads
+~/Desktop/ios/dist/hostpython3/bin/python3 get-pip.py --prefix=~/Desktop/ios/dist/hostpython3
+```
+
+5. 虽然 https://github.com/jimlearning/pyquicklz 或者 本地路径下 `pyquicklz.zip` 中已经包含 `setup.py` 始终无法找到。解决方案是，把 `setup.py` 跟 `__init__.py` 一起放在 `/Users/jim/Projects/kivy-build-output/dist/root/python3/lib/python3.11/site-packages/quicklz/` 路径下。
+
+6. 记得输出的静态库名称为 `libquicklz.a` 不是 `quicklz.a`。
+
+7. `hostpython` & `python_prefix` 模块无法找到
+
+```shell
+".../toolchain.py", line 1116, in install_python_package
+    hostpython = sh.Command(self.ctx.hostpython)
+                            ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Context' object has no attribute 'hostpython'
+AttributeError: 'Context' object has no attribute 'python_prefix'
+```
+
+这是因为 Python C 扩展模块需要依赖 `hostpython3`, `python3`这两个库，在 QuicklzRecipe 类加上依赖 `depends = ["hostpython3", "python3"]` 就好了。
+
+8. 如果修改过 quicklz 的代码之后，记得在 build 之前先 clean 一下，通过之后 update 一下。
+
+```shell
+toolchain clean quicklz
+toolchain build quicklz
+toolchain update kivy-quicklz-ios
+```
