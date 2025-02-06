@@ -1,5 +1,7 @@
 # Kivy iOS Python 调用 C 语言库 Quicklz 总结 - 静态库方案
 
+> 动态库方案: https://github.com/jimlearning/quicklz
+
 ## 预期目标
 
 kivy 是 Python 编写的开源用户界面框架，在 Windows、Linux、macOS、Android 和 iOS 上运行。本文的目标是在 iOS 上运行 kivy，且可以使用 kivy 调用第三方 c 语言库。具体来说，就是在 `main.py` 里，调用 c 库 `quicklz` 的 `compress` & `decompress` 方法。
